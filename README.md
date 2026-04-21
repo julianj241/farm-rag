@@ -35,6 +35,22 @@ User query
 END
 State is checkpointed with `MemorySaver` per session `thread_id`.
 
+## Routing
+
+The classifier routes queries through three paths:
+
+- **SQL** — factual, quantitative questions run against the structured SQLite store. Example: *"Which bed produces the most arugula?"* → `SELECT Bed, SUM(Bundles) ...` → JJ-6 / 17,973 bundles.
+- **Semantic** — narrative or analytical questions run against the monthly-chunked Chroma store.
+- **Conversational** — meta-questions about the prior conversation itself (*"what bed were we just talking about?"*) are routed by keyword detection straight to a history-only answer, bypassing retrieval entirely. This path uses the `MemorySaver` checkpointer to preserve turn-over-turn context per session `thread_id`.
+
+Example of memory across turns:
+> **User:** How many times was JJ-4 fertilized in 2022?
+> **Assistant:** The farm's JJ-4 bed was fertilized 21 times in the year 2022.
+> **User:** Which bed produces the most arugula?
+> **Assistant:** The JJ-6 bed produces the most arugula, with a total of 17,973 bundles harvested.
+> **User:** What bed were we just talking about?
+> **Assistant:** We were discussing the JJ beds, specifically JJ-4 and JJ-6.
+
 ## Data
 
 - **field_log.md** — 3,274 lines of daily farm log entries (Jan 2022 – Apr 2026), structured by month. Sample entries available in `docs_sample/` (full data kept private).

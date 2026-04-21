@@ -21,6 +21,23 @@ LLM_MODEL = "llama3.1:8b"
 RETRIEVE_K = 4
 SQL_ROW_LIMIT = 20
 
+# Keywords that signal a meta-question about the conversation itself.
+# If any of these appear in the user's question, we skip retrieval entirely
+# and answer from conversation history.
+_META_PATTERNS = [
+    "we just", "we were just", "we discussed", "we talked",
+    "previous", "earlier", "last question", "last bed",
+    "just asked", "just talking about", "just discussing",
+    "what did i ask", "which bed did i", "what bed did i",
+    "what were we", "which one", "that bed",
+]
+
+
+def _is_conversational(question: str) -> bool:
+    q = question.lower()
+    return any(p in q for p in _META_PATTERNS)
+
+
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
 CLASSIFY_PROMPT = """You are a query classifier for a farm assistant. Classify the user's question as either "sql" or "semantic".
@@ -131,12 +148,12 @@ Rules:
 Database schema:
 {schema}"""
 
-SEMANTIC_SYSTEM = """You are an assistant for an organic market garden. Answer questions using ONLY the field log excerpts provided below. Do not add general gardening knowledge, examples, or advice from outside the logs.
+SEMANTIC_SYSTEM = """You are an assistant for an organic market garden. Answer the user's question using the field log excerpts AND the prior conversation history.
 
 Rules:
-- Cite specific dates and bed names from the excerpts.
-- If the excerpts don't contain the answer, say exactly: "I don't see that in the logs." Do not speculate.
-- Do not make up numbers. Do not estimate totals. If asked for counts or aggregates, say: "I can only reason over the narrative log, not compute totals. For precise figures, a structured-data query is needed."
+- For factual questions about the farm: answer using ONLY the field log excerpts. Cite specific dates and bed names. If the excerpts don't cover it, say exactly: "I don't see that in the logs."
+- For meta-questions about the conversation itself ("what were we just discussing?", "which bed did I ask about?"): answer from the prior conversation history above. These are always valid.
+- Do not make up numbers or estimate totals. If asked for counts or aggregates, say: "I can only reason over the narrative log, not compute totals. For precise figures, a structured-data query is needed."
 
 Retrieved field log excerpts:
 {context}"""
@@ -145,6 +162,8 @@ SQL_ANSWER_SYSTEM = """\
 You are an assistant reporting farm data results. The user asked a question and a SQL query was run to answer it.
 Present the answer clearly in 1–3 sentences of plain prose. Refer to specific numbers from the result.
 If the result is empty, say so plainly. Do not add information beyond what the query result shows."""
+
+CONVERSATIONAL_SYSTEM = """You are an assistant answering a question about the prior conversation. The conversation history is provided above in the message list. Answer the user's question directly and briefly based on that history. Do not apologize or claim you lack context — the history is there. Reference specific beds, numbers, or topics from earlier turns."""
 
 # ── State ─────────────────────────────────────────────────────────────────────
 
@@ -202,6 +221,13 @@ def _format_table(cols: list[str], rows: list) -> str:
 # ── Nodes ─────────────────────────────────────────────────────────────────────
 
 def classify_query(state: State) -> dict:
+
+    # Fast path: meta-questions about the conversation itself.
+    # Skip retrieval entirely and answer from history.
+    if _is_conversational(state["question"]):
+        return {"route": "conversational", "retrieved_docs": [], "sql_query": None, "sql_result": None, "answer": ""}
+
+    # LLM classification for everything else
     recent = state.get("messages", [])[-4:]  # last 2 turns (user+ai pairs)
     response = _llm.invoke([
         SystemMessage(content=CLASSIFY_PROMPT),
@@ -210,7 +236,6 @@ def classify_query(state: State) -> dict:
     ])
     first_word = response.content.strip().lower().split()[0] if response.content.strip() else ""
     route = "sql" if first_word == "sql" else "semantic"
-    # Reset path-specific fields so stale values from a prior turn don't bleed through
     return {"route": route, "retrieved_docs": [], "sql_query": None, "sql_result": None, "answer": ""}
 
 
@@ -277,6 +302,26 @@ def generate_answer(state: State) -> dict:
     }
 
 
+def conversational_answer(state: State) -> dict:
+    """Answer meta-questions about the conversation itself, using only history."""
+    recent = state.get("messages", [])[-10:]  # last 5 turns
+    messages = [
+        SystemMessage(content=CONVERSATIONAL_SYSTEM),
+        *recent,
+        HumanMessage(content=state["question"]),
+    ]
+    response_text = ""
+    for chunk in _llm.stream(messages):
+        response_text += chunk.content
+    return {
+        "answer": response_text,
+        "messages": [
+            HumanMessage(content=state["question"]),
+            AIMessage(content=response_text),
+        ],
+    }
+
+
 def _route(state: State) -> str:
     return state["route"]
 
@@ -287,15 +332,21 @@ _builder.add_node("classify_query", classify_query)
 _builder.add_node("semantic_retrieve", semantic_retrieve)
 _builder.add_node("sql_query", sql_query)
 _builder.add_node("generate_answer", generate_answer)
+_builder.add_node("conversational_answer", conversational_answer)
 
 _builder.set_entry_point("classify_query")
 _builder.add_conditional_edges(
     "classify_query",
     _route,
-    {"semantic": "semantic_retrieve", "sql": "sql_query"},
+    {
+        "semantic": "semantic_retrieve",
+        "sql": "sql_query",
+        "conversational": "conversational_answer",
+    },
 )
 _builder.add_edge("semantic_retrieve", "generate_answer")
 _builder.add_edge("sql_query", "generate_answer")
 _builder.add_edge("generate_answer", END)
+_builder.add_edge("conversational_answer", END)
 
 graph = _builder.compile(checkpointer=MemorySaver())

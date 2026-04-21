@@ -48,6 +48,9 @@ def main() -> None:
                 st.code(s["sql_query"], language="sql")
             if s.get("sql_result"):
                 st.text(s["sql_result"])
+        elif s.get("route") == "conversational":
+            st.caption("💬 conversational (history only)")
+            st.caption("Answered from conversation context without retrieval.")
         else:
             st.caption("📚 narrative (Chroma)")
             for doc in s.get("retrieved_docs", []):
