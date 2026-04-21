@@ -1,8 +1,6 @@
 # TODO — Milestone 2
 
 ## Bugs to fix
-- [ ] **Memory doesn't persist in Streamlit UI** — `debug_memory.py` proves MemorySaver works at graph level; issue is in the Streamlit ↔ graph integration. Suspected cause: `@st.cache_resource` + `MemorySaver` in-memory store interaction. Try: swap MemorySaver for `SqliteSaver` with a file path so state survives script reruns regardless of caching behavior.
-- [ ] **Duplicate text rendering** was fixed by replacing `st.write_stream` with `st.write` + spinner. Re-add streaming using `graph.astream_events(version="v2")` with `event["event"] == "on_chat_model_stream"` and `event["metadata"]["langgraph_node"] == "generate_answer"` filtering.
 
 ## Classifier improvements
 - [ ] **Meta-questions** ("what did we just discuss?", "summarize our conversation") are misrouted. Add a `conversational` route that skips retrieval and answers from message history alone.
