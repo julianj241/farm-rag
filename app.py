@@ -51,6 +51,18 @@ def main() -> None:
         elif s.get("route") == "conversational":
             st.caption("💬 conversational (history only)")
             st.caption("Answered from conversation context without retrieval.")
+        elif s.get("route") == "recommend":
+            st.caption("🌤 recommendation (multi-source)")
+            st.caption("Synthesized from structured records + narrative logs + weather forecast.")
+            if s.get("sql_result"):
+                with st.expander("Activity & weather context"):
+                    st.text(s["sql_result"])
+            for doc in s.get("retrieved_docs", []):
+                with st.expander(source_label(doc)):
+                    snippet = doc.page_content[:SNIPPET_CHARS].strip()
+                    if len(doc.page_content) > SNIPPET_CHARS:
+                        snippet += "…"
+                    st.caption(snippet)
         else:
             st.caption("📚 narrative (Chroma)")
             for doc in s.get("retrieved_docs", []):

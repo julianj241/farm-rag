@@ -12,6 +12,9 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
+from weather import get_forecast, format_weather
+from bed_names import find_first_bed
+
 ROOT = Path(__file__).parent
 CHROMA_DIR = str(ROOT / "chroma_db")
 SQLITE_DB = ROOT / "farm.db"
@@ -40,23 +43,35 @@ def _is_conversational(question: str) -> bool:
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
-CLASSIFY_PROMPT = """You are a query classifier for a farm assistant. Classify the user's question as either "sql" or "semantic".
+CLASSIFY_PROMPT = """Classify the question. Reply with ONE word: sql, semantic, or recommend.
 
-Reply with EXACTLY one word: sql  or  semantic
+Decide based on TIME ORIENTATION:
 
-Use "sql" for questions about:
-- Counts, totals, sums, averages, yields
-- Specific records: when was X planted/harvested, how many bundles from bed Y
-- Rankings: most/least/top/bottom, highest/lowest
-- Scheduled or expected dates and durations
+sql — asks about PAST/EXISTING facts and numbers from the database.
+  Verb tense: produces, produced, was, has, had, last, ever
+  Examples:
+    "Which bed produces the most arugula?" → sql
+    "How many times was JJ-4 fertilized in 2022?" → sql
+    "What's the highest yield ever?" → sql
+    "When was JJ-7 last fertilized?" → sql
 
-Use "semantic" for questions about:
-- Narrative observations, trends, patterns over time
-- Reasoning or analysis ("why", "how did", "what happened to")
-- Open-ended questions about conditions, problems, decisions
-- Anything requiring interpretation of log entries
+semantic — asks about PAST narrative patterns or interpretation.
+  Verb tense: typically descriptive past
+  Examples:
+    "When do yellowing leaves usually happen?" → semantic
+    "Why did CC3 underperform last summer?" → semantic
+    "How does the farmer handle heat waves?" → semantic
 
-Follow-up handling: If the current question is a pronoun-heavy follow-up ("what about it?", "which one?", "that bed?", "we just talked about"), use the conversation history above to understand what's actually being asked, then classify based on the resolved meaning."""
+recommend — asks about FUTURE actions or decisions.
+  Verb tense: should, will, going to, tomorrow, this week, next
+  Examples:
+    "Should I water JJ-7 tomorrow?" → recommend
+    "What should I do this weekend?" → recommend
+    "Is the heat wave going to affect JJ-5?" → recommend
+
+If the question has no future-oriented words (should/tomorrow/will/next), it is NEVER recommend.
+
+For pronoun-heavy follow-ups, resolve from conversation history first."""
 
 DB_SCHEMA = """\
 Tables in farm.db (SQLite). Use double-quoted identifiers for all column names.
@@ -165,6 +180,15 @@ If the result is empty, say so plainly. Do not add information beyond what the q
 
 CONVERSATIONAL_SYSTEM = """You are an assistant answering a question about the prior conversation. The conversation history is provided above in the message list. Answer the user's question directly and briefly based on that history. Do not apologize or claim you lack context — the history is there. Reference specific beds, numbers, or topics from earlier turns."""
 
+RECOMMEND_SYSTEM = """You are an experienced market garden assistant. The user is asking for forward-looking advice about a specific bed or condition. You have been given:
+- Recent activity for the relevant bed from structured records (irrigation + fertilizer)
+- Narrative log excerpts from similar past situations
+- Upcoming weather forecast for El Cajon, CA
+
+Synthesize a specific, actionable recommendation. Cite which source informs each part of your answer (e.g., "based on last week's irrigation pattern...", "given tomorrow's forecast of...", "in past entries with similar conditions..."). Be concrete — name beds, dates, fertilizer products if relevant. If information is missing, say what you'd need to give a stronger recommendation.
+
+Keep your response to 3 short paragraphs maximum. Be concise and concrete."""
+
 # ── State ─────────────────────────────────────────────────────────────────────
 
 class State(TypedDict):
@@ -235,7 +259,12 @@ def classify_query(state: State) -> dict:
         HumanMessage(content=state["question"]),
     ])
     first_word = response.content.strip().lower().split()[0] if response.content.strip() else ""
-    route = "sql" if first_word == "sql" else "semantic"
+    if first_word == "sql":
+        route = "sql"
+    elif first_word == "recommend":
+        route = "recommend"
+    else:
+        route = "semantic"
     return {"route": route, "retrieved_docs": [], "sql_query": None, "sql_result": None, "answer": ""}
 
 
@@ -275,7 +304,7 @@ def generate_answer(state: State) -> dict:
         )
         messages = [
             SystemMessage(content=SEMANTIC_SYSTEM.format(context=context)),
-            *state["messages"],
+            *state["messages"][-4:],
             HumanMessage(content=state["question"]),
         ]
     else:
@@ -286,7 +315,7 @@ def generate_answer(state: State) -> dict:
         )
         messages = [
             SystemMessage(content=SQL_ANSWER_SYSTEM),
-            *state["messages"],
+            *state["messages"][-4:],
             HumanMessage(content=body),
         ]
 
@@ -322,6 +351,80 @@ def conversational_answer(state: State) -> dict:
     }
 
 
+def recommend_answer(state: State) -> dict:
+    question = state["question"]
+    bed = find_first_bed(question)
+
+    # Hop 1: structured recent activity
+    sql_context = ""
+    try:
+        with sqlite3.connect(str(SQLITE_DB)) as conn:
+            if bed:
+                fert_rows = conn.execute(
+                    'SELECT "Date", "Product", "Reason" FROM fertilizer '
+                    'WHERE "Bed" = ? ORDER BY "Date" DESC LIMIT 5',
+                    (bed,)
+                ).fetchall()
+            else:
+                fert_rows = []
+            irr_rows = conn.execute(
+                'SELECT "Date", "Action", "Reason" FROM irrigation '
+                'ORDER BY "Date" DESC LIMIT 5'
+            ).fetchall()
+        sql_context = (
+            f"Recent irrigation events:\n"
+            + "\n".join(f"  {d} | {a} | {r}" for d, a, r in irr_rows)
+            + (f"\n\nRecent fertilizer for {bed}:\n"
+               + "\n".join(f"  {d} | {p} | {r}" for d, p, r in fert_rows)
+               if bed else "")
+        )
+    except Exception as exc:
+        sql_context = f"(structured data lookup error: {exc})"
+
+    # Hop 2: narrative context
+    docs = _vectorstore.similarity_search(question, k=2)
+    narrative_context = "\n\n---\n\n".join(
+        f"[{_source_label(d)}]\n{d.page_content[:400]}"
+        for d in docs
+    )
+
+    # Hop 3: weather
+    try:
+        forecast = format_weather(get_forecast(days=3))
+    except Exception as exc:
+        forecast = f"(weather lookup error: {exc})"
+
+    # Synthesis
+    body = (
+        f"User question: {question}\n\n"
+        f"Bed identified: {bed or '(none — query is general)'}\n\n"
+        f"=== Recent structured activity ===\n{sql_context}\n\n"
+        f"=== Relevant narrative excerpts ===\n{narrative_context}\n\n"
+        f"=== Upcoming weather (El Cajon, CA, next 5 days) ===\n{forecast}"
+    )
+
+    messages = [
+        SystemMessage(content=RECOMMEND_SYSTEM),
+        *state.get("messages", [])[-4:],
+        HumanMessage(content=body),
+    ]
+
+    response_text = ""
+    for chunk in _llm.stream(messages):
+        response_text += chunk.content
+
+    return {
+        "answer": response_text,
+        "retrieved_docs": list(docs),
+        "sql_query": "(multi-hop synthesis)",
+        "sql_result": sql_context[:1500] + "\n\n--- Weather ---\n" + forecast,
+        "messages": [
+            HumanMessage(content=question),
+            AIMessage(content=response_text),
+        ],
+    }
+
+
 def _route(state: State) -> str:
     return state["route"]
 
@@ -333,6 +436,7 @@ _builder.add_node("semantic_retrieve", semantic_retrieve)
 _builder.add_node("sql_query", sql_query)
 _builder.add_node("generate_answer", generate_answer)
 _builder.add_node("conversational_answer", conversational_answer)
+_builder.add_node("recommend_answer", recommend_answer)
 
 _builder.set_entry_point("classify_query")
 _builder.add_conditional_edges(
@@ -342,11 +446,13 @@ _builder.add_conditional_edges(
         "semantic": "semantic_retrieve",
         "sql": "sql_query",
         "conversational": "conversational_answer",
+        "recommend": "recommend_answer",
     },
 )
 _builder.add_edge("semantic_retrieve", "generate_answer")
 _builder.add_edge("sql_query", "generate_answer")
 _builder.add_edge("generate_answer", END)
 _builder.add_edge("conversational_answer", END)
+_builder.add_edge("recommend_answer", END)
 
 graph = _builder.compile(checkpointer=MemorySaver())

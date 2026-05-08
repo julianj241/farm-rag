@@ -1,7 +1,6 @@
 import re
 
-_BED_PATTERN = re.compile(r'\b(U[1-8]|JJ-\d{1,2}|CC\d{1,2})\b')
-
+BED_PATTERN = re.compile(r'\b(U[1-8]|JJ-\d{1,2}|CC\d{1,2})\b')
 
 def normalize_bed(short: str) -> str:
     """Convert short-form bed name to long form matching the xlsx convention."""
@@ -16,3 +15,8 @@ def extract_beds(text: str) -> list[str]:
     """Return sorted list of unique normalized bed names mentioned in text."""
     raw = _BED_PATTERN.findall(text)
     return sorted(set(normalize_bed(b) for b in raw))
+
+def find_first_bed(text: str) -> str | None:
+    """Return the first normalized bed name found in text, or None."""
+    m = BED_PATTERN.search(text)
+    return normalize_bed(m.group(0)) if m else None
