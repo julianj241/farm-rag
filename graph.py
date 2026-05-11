@@ -1,5 +1,7 @@
+import asyncio
 import re
 import sqlite3
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -10,9 +12,10 @@ from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 from typing_extensions import TypedDict
 
-from weather import get_forecast, format_weather
 from bed_names import find_first_bed
 
 ROOT = Path(__file__).parent
@@ -242,6 +245,25 @@ def _format_table(cols: list[str], rows: list) -> str:
     sep = "-+-".join("-" * w for w in widths)
     return "\n".join([fmt(cols), sep] + [fmt(r) for r in rows])
 
+
+async def _call_weather_tool_async(tool_name: str, arguments: dict) -> str:
+    """Spawn the weather MCP server as a stdio subprocess and call one tool."""
+    server_params = StdioServerParameters(
+        command=sys.executable,
+        args=[str(ROOT / "weather_mcp_server.py")],
+    )
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool(tool_name, arguments)
+            texts = [c.text for c in result.content if hasattr(c, "text")]
+            return "\n".join(texts)
+
+
+def _fetch_weather_via_mcp(days: int = 3) -> str:
+    """Sync wrapper around the async MCP client call."""
+    return asyncio.run(_call_weather_tool_async("get_forecast", {"days": days}))
+
 # ── Nodes ─────────────────────────────────────────────────────────────────────
 
 def classify_query(state: State) -> dict:
@@ -388,9 +410,9 @@ def recommend_answer(state: State) -> dict:
         for d in docs
     )
 
-    # Hop 3: weather
+    # Hop 3: weather (via MCP)
     try:
-        forecast = format_weather(get_forecast(days=3))
+        forecast = _fetch_weather_via_mcp(days=3)
     except Exception as exc:
         forecast = f"(weather lookup error: {exc})"
 
