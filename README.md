@@ -81,7 +81,7 @@ The MCP server runs as a subprocess spawned automatically by the graph; no separ
 
 ### Query pipeline (`graph.py`)
 
-1. **Classifier node**: Prompts `llama3.1:8b` to return one word: `sql` or `semantic`. Includes recent conversation history for follow-up-aware classification.
+1. **Classifier node**: Prompts `llama3.1:8b` to return one word: `sql`, `semantic`, or `recommend`. Conversational meta-questions (e.g. *"what bed were we just discussing?"*) are detected by a keyword pre-filter before the LLM call. Recent conversation history is included for follow-up-aware classification.
 2. **Semantic node**: Similarity search against Chroma, top 4 chunks.
 3. **SQL node**: LLM generates SQLite from a hardcoded schema prompt that includes value conventions (e.g. Crop values are lowercase) and table-usage guidance. Query is sanity-checked to be SELECT-only, then executed; results formatted as a plain-text table.
 4. **Generator node**: Takes retrieved context (chunks or SQL result) and writes the final natural-language answer.
@@ -123,11 +123,11 @@ python ingest.py
 streamlit run app.py
 ```
 
-## Known limitations (Milestone 2 scope)
+## Known limitations and future work
 
 - **Comparison queries** (e.g., *"compare fertilizer patterns between JJ and CC beds"*) are ambiguously routed — they're neither pure SQL nor pure narrative, and the current classifier handles them inconsistently.
-- **Query rewriting** for ambiguous or too-short queries — scoped for Milestone 2.
-- **Streaming responses** were replaced with invoke-plus-spinner to eliminate an artifact in LangGraph's `stream_mode="messages"` that leaked intermediate node tokens into the UI. Streaming will be re-added in Milestone 2 with proper event-level filtering.
+- **Query rewriting** for ambiguous or too-short queries is not yet implemented. The classifier handles pronoun resolution but doesn't reformulate terse queries before retrieval.
+- **Streaming responses** were replaced with invoke-plus-spinner to eliminate an artifact in LangGraph's `stream_mode="messages"` that leaked intermediate node tokens into the UI. Re-adding token streaming would require proper event-level filtering via `astream_events`.
 
 ## Stack
 
