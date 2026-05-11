@@ -51,7 +51,7 @@ The classifier routes queries through four paths:
 - **SQL** — factual, quantitative questions run against the structured SQLite store. Example: *"Which bed produces the most arugula?"* → `SELECT Bed, SUM(Bundles) ...` → JJ-6 / 17,973 bundles.
 - **Semantic** — narrative or analytical questions run against the monthly-chunked Chroma store.
 - **Conversational** — meta-questions about the prior conversation itself (*"what bed were we just talking about?"*) are routed by keyword detection straight to a history-only answer, bypassing retrieval entirely. This path uses the `MemorySaver` checkpointer to preserve turn-over-turn context per session `thread_id`.
-- **Recommend** — forward-looking advice questions (*"should I water JJ-7 tomorrow?"*) trigger a multi-hop node that pulls recent structured activity (last 5 irrigation + fertilizer events), narrative excerpts from comparable past situations, and the upcoming 3-day weather forecast from Open-Meteo. The LLM synthesizes a cited recommendation from all three sources.
+- **Recommend** — forward-looking advice questions (*"should I water JJ-7 tomorrow?"*) trigger a multi-hop node that pulls recent structured activity (last 5 irrigation + fertilizer events), narrative excerpts from comparable past situations, and the upcoming 3-day weather forecast via an **MCP (Model Context Protocol) client** that spawns and talks to `weather_mcp_server.py` over stdio. The LLM synthesizes a cited recommendation from all three sources.
 
 Example of memory across turns:
 > **User:** How many times was JJ-4 fertilized in 2022?
@@ -60,6 +60,12 @@ Example of memory across turns:
 > **Assistant:** The JJ-6 bed produces the most arugula, with a total of 17,973 bundles harvested.
 > **User:** What bed were we just talking about?
 > **Assistant:** We were discussing the JJ beds, specifically JJ-4 and JJ-6.
+
+## MCP integration
+
+The weather tool is exposed as a proper Model Context Protocol (MCP) server in `weather_mcp_server.py`. The recommend node connects to it as an MCP client over stdio, calling the `get_forecast` tool to retrieve weather data. This is the architecture the spec calls for: agent (MCP Client) → Weather MCP Server.
+
+The MCP server runs as a subprocess spawned automatically by the graph; no separate process needs to be started at demo time. Same single `streamlit run app.py` command.
 
 ## Data
 
@@ -120,7 +126,6 @@ streamlit run app.py
 ## Known limitations (Milestone 2 scope)
 
 - **Comparison queries** (e.g., *"compare fertilizer patterns between JJ and CC beds"*) are ambiguously routed — they're neither pure SQL nor pure narrative, and the current classifier handles them inconsistently.
-- **Weather integration is via direct API call**, not wrapped in a proper MCP server/client architecture. The functionality is fully working; refactoring to MCP is a future enhancement for spec compliance.
 - **Query rewriting** for ambiguous or too-short queries — scoped for Milestone 2.
 - **Streaming responses** were replaced with invoke-plus-spinner to eliminate an artifact in LangGraph's `stream_mode="messages"` that leaked intermediate node tokens into the UI. Streaming will be re-added in Milestone 2 with proper event-level filtering.
 
@@ -131,6 +136,7 @@ streamlit run app.py
 - **Vector store**: Chroma (persistent on disk)
 - **Structured store**: SQLite (8 tables, auto-generated from xlsx)
 - **Weather**: Open-Meteo (free, no API key) for forecast and historical data, El Cajon CA coordinates
+- **MCP**: Official `mcp` Python SDK for the weather server/client integration
 - **Orchestration**: LangChain + LangGraph with `MemorySaver` checkpointer
 - **UI**: Streamlit
 
@@ -139,6 +145,7 @@ farm-rag/
 ├── ingest.py           # Markdown → Chroma, xlsx → SQLite
 ├── bed_names.py        # Bed-name normalization between short/long forms
 ├── weather.py          # Open-Meteo client (forecast + historical)
+├── weather_mcp_server.py  # MCP server exposing weather tools over stdio
 ├── graph.py            # LangGraph state machine: classifier + SQL/semantic routes + generator
 ├── app.py              # Streamlit UI
 ├── Modelfile           # Custom Ollama embedding model with extended context
