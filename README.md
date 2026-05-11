@@ -69,7 +69,7 @@ The MCP server runs as a subprocess spawned automatically by the graph; no separ
 
 ## Data
 
-- **field_log.md** — 3,274 lines of daily farm log entries (Jan 2022 – Apr 2026), structured by month. Sample entries available in `docs_sample/` (full data kept private).
+- **field_log.md** — 3,274 lines of daily farm log entries (Jan 2022 – Apr 2026), structured by month. Full data is kept private (gitignored); the schema and structure are documented above.
 - **farm_records.xlsx** — 8 sheets of structured data: Beds (30), Plantings (977), Harvests (3,253), Fertilizer (2,469), Amendments (91), Weather (38), Irrigation (2,494), Summary.
 
 ## Pipeline
