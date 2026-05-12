@@ -147,6 +147,35 @@ streamlit run app.py
 
 The system was end-to-end tested before submission.
 
+### Libraries
+
+Full pinned dependency list in `requirements.txt`. Key dependencies and where they're used:
+
+- **LangChain** (`langchain`, `langchain-core`, `langchain-community`, `langchain-chroma`, `langchain-ollama`, `langchain-text-splitters`) — retrieval primitives, LLM wrappers, chunking. Used in `ingest.py` (embedding + Chroma writes) and `graph.py` (LLM calls).
+- **LangGraph** (`langgraph`, `langgraph-checkpoint`) — state machine, conditional edges, MemorySaver checkpointer. Used in `graph.py`.
+- **Chroma** (`chromadb`) — persistent vector store. Written by `ingest.py`, read by `graph.py`.
+- **Ollama** (`ollama` Python client + the Ollama desktop runtime) — local LLM (`llama3.1:8b`) and embedding model (`nomic-embed-long`). Used in `ingest.py`, `graph.py`, and indirectly by every retrieval call.
+- **MCP** (`mcp` Python SDK) — Model Context Protocol server and client. Used in `weather_mcp_server.py` (server) and `graph.py` (client subprocess invocation).
+- **Streamlit** — chat UI framework. Used in `app.py`.
+- **pandas + openpyxl** — Excel parsing. Used in `ingest.py`.
+- **SQLite** (Python stdlib) — structured tabular store. Written by `ingest.py`, read by `graph.py` (SQL route and recommend route).
+- **requests** — HTTP client for the Open-Meteo API. Used in `weather.py`.
+
+### Data sources
+
+- **Personal farm field log (`field_log.md`)** — daily narrative log I authored for my own organic market garden (arugula and watercress) in El Cajon, CA, spanning January 2022 through April 2026. Private; not included in the repo.
+- **Personal farm records spreadsheet (`farm_records.xlsx`)** — structured records of bed metadata, plantings, harvests, fertilizer applications, amendments, irrigation events, and weather observations. Same farm, same time period. Also private.
+- **Open-Meteo** (https://open-meteo.com) — free public weather API, no API key required. Used live at query time for forecast and historical data for El Cajon, CA (lat 32.7948, lon -116.9625). Called via `weather.py` and exposed as MCP tools by `weather_mcp_server.py`.
+
+### Articles and documentation referenced
+
+- LangChain documentation (https://python.langchain.com)
+- LangGraph documentation (https://langchain-ai.github.io/langgraph/)
+- Ollama documentation (https://ollama.com/docs)
+- Anthropic Model Context Protocol specification (https://modelcontextprotocol.io)
+- Open-Meteo API documentation (https://open-meteo.com/en/docs)
+- SDSU CS 668 course materials and lecture slides on RAG, fine-tuning, and adaptive retrieval
+
 ## Hardware
 
 Developed and tested on:
