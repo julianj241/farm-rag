@@ -1,5 +1,4 @@
-# TODO — Milestone 2
-
+# TODO — Post Milestone
 ## Bugs to fix
 
 ## Classifier improvements
