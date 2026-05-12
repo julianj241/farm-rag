@@ -2,6 +2,23 @@
 
 A local, agentic RAG system over four years of organic farm field logs and structured records. Built in Python using LangChain, LangGraph, Chroma, SQLite, Streamlit, and Ollama — no cloud APIs.
 
+## Contents
+
+Rubric-aligned navigation:
+
+| What | Where |
+|---|---|
+| **What I did / project goal** | [What it does](#what-it-does) |
+| **How I achieved it** | [Architecture](#architecture), [Routing](#routing), [Pipeline](#pipeline), [MCP integration](#mcp-integration) |
+| **Results** | [Results](#results) |
+| **Code & dependencies** | [Setup](#setup), [Files](#files), `requirements.txt` |
+| **Data sources** | [Data](#data), [References → Data sources](#data-sources) |
+| **References (websites, AI, libraries)** | [References and tools used](#references-and-tools-used) |
+| **Hardware** | [Hardware](#hardware) |
+| **Known issues and limitations** | [Known limitations and future work](#known-limitations-and-future-work) |
+
+Example queries are documented in [Example queries](#example-queries).
+
 ## What it does
 
 Answers natural-language questions about a small market-garden operation (arugula and watercress in El Cajon, CA) by routing each query to the right retrieval strategy:
