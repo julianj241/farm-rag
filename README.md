@@ -94,9 +94,9 @@ Streamlit chat interface with a sidebar that displays route-specific retrieval d
 
 | Query | Route | Answer |
 |---|---|---|
-| How many times was JJ-4 fertilized in 2022? | 🗄 SQL | The farm's JJ-4 bed was fertilized 21 times in the year 2022. |
-| Which bed produces the most arugula? | 🗄 SQL | JJ-6, with 17,973 bundles harvested total. |
-| When do yellowing leaves tend to happen in JJ beds? | 📚 Chroma | Grounded narrative answer citing specific log entries by month. |
+| How many times was JJ-4 fertilized in 2022? | SQL | The farm's JJ-4 bed was fertilized 21 times in the year 2022. |
+| Which bed produces the most arugula? | SQL | JJ-6, with 17,973 bundles harvested total. |
+| When do yellowing leaves tend to happen in JJ beds? | Chroma | Grounded narrative answer citing specific log entries by month. |
 | Should I water JJ-7 tomorrow? | 🌤 Recommend | Multi-hop: pulls recent JJ-7 activity, comparable past entries, and 3-day forecast — produces a specific cited watering recommendation. |
 
 ## Setup
