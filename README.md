@@ -99,6 +99,16 @@ Streamlit chat interface with a sidebar that displays route-specific retrieval d
 | When do yellowing leaves tend to happen in JJ beds? | Chroma | Grounded narrative answer citing specific log entries by month. |
 | Should I water JJ-7 tomorrow? | Recommend | Multi-hop: pulls recent JJ-7 activity, comparable past entries, and 3-day forecast — produces a specific cited watering recommendation. |
 
+## Results
+
+The system was evaluated against the four representative queries above, each targeting a different retrieval strategy. All four returned correct, grounded answers:
+
+- The two SQL-routed queries produced exact numbers verified against the underlying `harvests` and `fertilizer` tables (JJ-6 = 17,973 bundles is the actual top-producing bed across 3,253 harvest records; JJ-4 was indeed fertilized 21 times in 2022).
+- The semantic-routed query about yellowing leaves cited actual log entries by date and bed, rather than inventing a generic horticulture answer (a failure mode seen during early development before prompt grounding was tightened).
+- The recommend-routed query produced a forward-looking watering recommendation that referenced specific past activity for JJ-7, comparable past entries from the narrative log, and live weather forecast data fetched via the MCP weather server.
+
+**Goal achievement:** The original goal was to build a hybrid RAG system that distinguishes factual vs. analytical queries and uses adaptive retrieval. The final system goes beyond this — it implements four distinct routes (SQL, semantic, conversational, recommend) and demonstrates predictive multi-source synthesis, which was originally listed as out of scope. All five spec components are functional end-to-end.
+
 ## Setup
 
 Prerequisites: Python 3.11, [Ollama](https://ollama.com), Git.
@@ -122,6 +132,30 @@ python ingest.py
 # Run
 streamlit run app.py
 ```
+
+## References and tools used
+
+### AI tools
+
+- **Claude Code (Anthropic)** - used as an interactive pair-programming assistant throughout development. Specific uses:
+
+  - Architectural discussion and design decisions for the LangGraph state machine and multi-route classifier
+
+  - Debugging assistance - particularly around the LangChain/Chroma context-length issue (resolved by building a custom Ollama embedding model via Modelfile), the MCP SDK API surface, and Streamlit chat rendering quirks
+
+  - Assistance in documentation formatting for this README and PROJECT.md 
+
+The system was end-to-end tested before submission.
+
+## Hardware
+
+Developed and tested on:
+
+- **Primary development machine:** Windows 11 PC (specs: 32Gb Ram, AMD Ryzen 7 7800X3D, NVIDIA RTX 5070)
+
+- **Secondary / demo machine:** MacBook Air M2, 16 GB unified memory (macOS)
+
+Local inference runs `llama3.1:8b` (≈ 5 GB) and a custom `nomic-embed-long` embedding model (≈ 280 MB) via Ollama. Apple Silicon's Metal acceleration handles inference comfortably; the Windows machine relies on CPU (or GPU if available). No cloud APIs used for inference.
 
 ## Known limitations and future work
 
