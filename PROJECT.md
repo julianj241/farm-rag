@@ -8,10 +8,10 @@
 - Ollama: llama3.1:8b (LLM) + nomic-embed-text (embeddings)
 - Streamlit
 
-## Goal (today's milestone)
+## Goal
 Working end-to-end hybrid RAG over farm docs in Streamlit, wrapped in a LangGraph with a classifier node that routes queries to either SQL (factual) or semantic search (analytical).
 
-## In scope today
+## In scope
 1. Ingest field_log.md -> Chroma (chunk by month, metadata: year/month/farm area)
 2. Ingest farm_records.xlsx -> SQLite (one table per sheet: beds, plantings, harvests, fertilizer, amendments, weather, irrigation)
 3. Streamlit chat UI with streaming responses
@@ -20,7 +20,7 @@ Working end-to-end hybrid RAG over farm docs in Streamlit, wrapped in a LangGrap
    - sql_query (SQLite) for quantitative/factual queries
 5. MemorySaver checkpointer with per-session thread_id
 
-## Out of scope today (Milestone 2)
+## Out of scope pre milestone
 - MCP weather server
 - Query rewriter
 - Full citation system with log dates
